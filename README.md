@@ -49,7 +49,6 @@ Businesses and marketers struggle to extract actionable insights from public Ins
 SIMATS_ORIGIN_HACK/
 ├── backend/
 │   ├── core/
-
 │   │   ├── nlp_sentiment.py       # TextBlob-based sentiment engine
 │   │   └── verifier.py            # Public profile meta-tag parsing logic
 │   ├── data_extraction/
