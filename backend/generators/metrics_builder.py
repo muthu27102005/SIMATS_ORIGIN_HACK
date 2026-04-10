@@ -1,101 +1,127 @@
 import hashlib
 import random
 
-def generate_video_metrics(username: str, followers: int, db_overrides=None):
+def build_video_metrics(username: str, posts_data: list):
+    """
+    Takes real scraped post data and enriches with synthesized private metrics.
+    Synthesized values are anchored to real engagement numbers for realism.
+    """
     seed = int(hashlib.md5(username.encode()).hexdigest(), 16)
     random.seed(seed)
     
     videos = []
     
-    captions_db = [
-        "Unlocking the secrets to growth today! 🚀 What do you guys think?",
-        "This didn't go as planned but we learned so much. Watch till the end! 😅",
-        "Quick tutorial on how to master this skill. Link in bio. 📚 #tutorial",
-        "Wait for it... wait for it... BOOM! 💥 Did you see that?",
-        "I've been using this method for 5 years. Here is exactly how I do it. 💡",
-        "Monday motivation right here! Don't let anything stop you. 💪",
-        "This strategy changed everything for my business. Save this! 📈",
-        "I couldn't believe it when I found this out. Huge hack! 🤯"
-    ]
-    
-    positive_comments_db = [
-        "This is amazing, exactly what I needed today! ❤️",
-        "Mind blown! Definitely saving this for later. 🔥",
-        "This changed my life! Thank you so much for sharing.",
-        "Absolutely brilliant. More of this content please!",
-        "Incredible value here. Shared with my team! 🚀"
-    ]
-    
-    negative_comments_db = [
-        "This is terrible advice, please don't listen to this. 😡",
-        "Worst video I've seen all day. Waste of time.",
-        "Completely disagree. This strategy is actually harmful.",
-        "Why would you post this? Makes absolutely no sense.",
-        "Unfollowing after this one. Terrible content.",
-        "The audio quality is garbage and your points are wrong.",
-        "Total clickbait title and awful content. 📉"
-    ]
-    
-    neutral_comments_db = [
-        "I don't agree with the second point but overall interesting.",
-        "Can you explain step 3 in more detail?",
-        "How long did this take to edit?",
-        "Seen this method before, it works sometimes.",
-        "It's okay, but you missed some key context."
-    ]
-    
-    video_count = random.randint(5, 45) if not db_overrides else random.randint(5, 10)
-    
-    # If db_overrides exists, split the massive DB totals strictly among the videos generated here
-    target_views = db_overrides['total_views'] if db_overrides else int(followers * random.uniform(0.5, 4.0))
-    target_likes = db_overrides['total_likes'] if db_overrides else int(target_views * random.uniform(0.05, 0.2))
-    target_comments = db_overrides['total_comments'] if db_overrides else int(target_views * random.uniform(0.01, 0.05))
-    target_shares = db_overrides['total_shares'] if db_overrides else int(target_views * random.uniform(0.02, 0.1))
-    target_reposts = db_overrides['total_reposts'] if db_overrides else int(target_shares * random.uniform(0.1, 0.5))
-    
-    vc = min(video_count, 12)
-    
-    for i in range(1, vc + 1):
-        duration = random.randint(15, 90) 
-        watchtime = duration * random.uniform(0.3, 0.8)
+    for post in posts_data:
+        likes = post["likes"]
+        comments_count = post["comments_count"]
+        views = post["views_estimate"]
         
-        # Calculate proportional spread
-        views = target_views // vc
-        likes = target_likes // vc
-        shares = target_shares // vc
-        reposts = target_reposts // vc
-        comments_count = target_comments // vc
+        # Anchor synthetic metrics to real engagement ratios
+        engagement_ratio = (likes / max(views, 1)) * 100  # real engagement %
         
-        swipe_rate = round(random.uniform(15.0, 65.0), 1) 
+        # Watchtime: high-engagement posts retain better
+        duration = random.randint(15, 90)
+        retention_base = min(0.8, 0.3 + (engagement_ratio * 0.1))
+        watchtime = round(duration * random.uniform(retention_base * 0.75, min(0.95, retention_base * 1.2)), 1)
         
-        caption = random.choice(captions_db)
+        # Swipe rate: inversely correlated with engagement
+        swipe_base = max(15.0, 70.0 - (engagement_ratio * 5))
+        swipe_rate = round(random.uniform(swipe_base * 0.85, min(85.0, swipe_base * 1.15)), 1)
         
-        vibe = random.choice(["Positive", "Positive", "Negative", "Neutral", "Positive"])
-        if vibe == "Positive":
-            vid_comments = random.sample(positive_comments_db, random.randint(2, 4))
-        elif vibe == "Negative":
-            vid_comments = random.sample(negative_comments_db, random.randint(2, 4))
-        else:
-            vid_comments = random.sample(neutral_comments_db, random.randint(2, 4))
+        # Shares and reposts estimated from likes
+        shares = int(likes * random.uniform(0.05, 0.2))
+        reposts = int(shares * random.uniform(0.1, 0.4))
+        
+        # Simulated comments to use for NLP (real comments hit auth wall)
+        vibe_comments = _generate_comments_for_engagement(engagement_ratio, seed + len(videos))
         
         videos.append({
-            "id": f"Vid-{i}",
-            "thumbnail": f"https://picsum.photos/seed/{seed + i}/250/400",
-            "caption": caption,
+            "id": post["id"],
+            "thumbnail": post["thumbnail"],
+            "caption": post["caption"],
             "duration": duration,
-            "avg_watchtime": round(watchtime, 1),
+            "avg_watchtime": watchtime,
             "views": views,
             "likes": likes,
             "shares": shares,
             "reposts": reposts,
             "comments_count": comments_count,
             "swipe_rate": swipe_rate,
-            "comments": vid_comments
+            "timestamp": post["timestamp"],
+            "days_ago": post["days_ago"],
+            "is_video": post.get("is_video", False),
+            "comments": vibe_comments,
         })
-        
+    
+    # Best upload time from real post timestamps
+    best_upload_time = _infer_best_upload_time(posts_data)
+    
     return {
-        "video_count": video_count,
+        "video_count": len(videos),
         "videos": videos,
-        "profile_activity": round(random.uniform(60.0, 95.0), 1),
-        "best_upload_time": random.choice(["09:00 AM", "12:30 PM", "06:15 PM", "08:00 PM"])
+        "profile_activity": _calc_activity_score(posts_data),
+        "best_upload_time": best_upload_time,
     }
+
+
+def _generate_comments_for_engagement(engagement_ratio, seed):
+    random.seed(seed)
+    positive = [
+        "This is amazing, exactly what I needed! ❤️",
+        "Mind blown! Saving this for later. 🔥",
+        "This changed my perspective. Thank you!",
+        "Absolutely brilliant. More of this please!",
+        "Incredible value here. Shared with my team! 🚀"
+    ]
+    negative = [
+        "Terrible advice, please don't do this. 😡",
+        "Worst content I've seen today. Waste of time.",
+        "Completely disagree with this approach.",
+        "Why would you post this? Makes no sense.",
+        "Total clickbait. Disappointed. 📉"
+    ]
+    neutral = [
+        "Interesting, but I'd like more context.",
+        "Can you explain step 2 more clearly?",
+        "Seen this before, works sometimes.",
+        "Not sure I agree with the second point.",
+        "How long did this take to make?"
+    ]
+    if engagement_ratio > 8:
+        pool = positive
+    elif engagement_ratio < 3:
+        pool = negative
+    else:
+        pool = neutral
+    return random.sample(pool, random.randint(2, 4))
+
+
+def _infer_best_upload_time(posts_data):
+    """Infer best time to post from timestamps of highest-engagement posts."""
+    if not posts_data:
+        return "7:00 PM"
+    # Sort by likes desc and look at post dates
+    sorted_posts = sorted(posts_data, key=lambda p: p["likes"], reverse=True)
+    top_post = sorted_posts[0]
+    try:
+        dt = top_post["timestamp"]
+        hour = int(dt.split("-")[2][:2]) % 24  # crude estimate
+        if 5 <= hour <= 10:
+            return "8:30 AM"
+        elif 11 <= hour <= 14:
+            return "12:30 PM"
+        else:
+            return "7:00 PM"
+    except Exception:
+        return "7:00 PM"
+
+
+def _calc_activity_score(posts_data):
+    if not posts_data:
+        return 50.0
+    if len(posts_data) < 3:
+        return 60.0
+    # Activity based on recency of posts
+    avg_days = sum(p["days_ago"] for p in posts_data) / len(posts_data)
+    score = max(20.0, 100.0 - (avg_days * 1.5))
+    return round(score, 1)
